@@ -58,11 +58,21 @@ Triển khai hệ thống YouTube Shadowing Backend dựa trên template SaaS c�
 - [x] Add caching for video metadata
 - [x] Implement quota management
 
-### 2. Transcript Module
+### 2. Transcript Module - IN PROGRESS 🔧
 - [ ] Generate module using `pnpm module:generate`
 - [ ] Implement TranscriptService
+  - [ ] getTranscript(videoId) - with caching
+  - [ ] processYouTubeTranscript() - parse YouTube captions
+  - [ ] segmentTranscript() - break into sentences with timestamps
+  - [ ] searchTranscripts() - find practice content
 - [ ] Create DTOs
+  - [ ] GetTranscriptDTO
+  - [ ] ProcessTranscriptDTO
+  - [ ] SearchTranscriptDTO
 - [ ] Implement API endpoints
+  - [ ] GET /api/transcript/:videoId
+  - [ ] POST /api/transcript/:videoId/process
+  - [ ] GET /api/transcript/search
 - [ ] Add caching layer for transcripts
 - [ ] Implement rate limiting for API calls
 
