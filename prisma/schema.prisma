@@ -1,0 +1,1942 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum UserRole {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum AuthProviderType {
+  LOCAL
+  GOOGLE
+  GITHUB
+  FACEBOOK
+  TWITTER
+}
+
+enum TokenType {
+  ACCESS
+  REFRESH
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+  TWO_FACTOR
+}
+
+enum NotificationType {
+  EMAIL
+  SMS
+  PUSH
+  IN_APP
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  TRIALING
+  UNPAID
+  PAUSED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  UNCOLLECTIBLE
+  VOID
+  FAILED
+}
+
+enum TenantStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum TenantMemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+// Models
+model User {
+  id       String  @id @default(cuid())
+  email    String  @unique @db.VarChar(255)
+  username String? @unique @db.VarChar(50)
+  password String? @db.VarChar(255)
+
+  firstName   String? @db.VarChar(100)
+  lastName    String? @db.VarChar(100)
+  displayName String? @db.VarChar(100)
+  avatar      String? @db.Text
+  bio         String? @db.Text
+
+  role   UserRole   @default(USER)
+  status UserStatus @default(ACTIVE)
+
+  emailVerified   Boolean   @default(false)
+  emailVerifiedAt DateTime?
+
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecret  String? @db.VarChar(255)
+
+  lastLoginAt DateTime?
+  lastLoginIp String?   @db.VarChar(45)
+  loginCount  Int       @default(0)
+
+  metadata    Json? @db.JsonB
+  preferences Json? @db.JsonB
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  authProviders AuthProvider[]
+  tokens        Token[]
+  sessions      Session[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+  files         File[]
+  subscriptions Subscription[]
+  projects      Project[]
+  apiUsage      ApiUsage[]
+  tenantMembers TenantMember[]
+  ownedTenants  Tenant[]
+
+  // Ticket/Support
+  tickets          Ticket[]
+  assignedTickets  Ticket[]         @relation("AssignedTickets")
+  ticketMessages   TicketMessage[]
+  ticketActivities TicketActivity[]
+  ticketWatchers   TicketWatcher[]
+
+  incidents        Incident[]         @relation("ResolvedIncidents")
+  incidentUpdates  IncidentUpdate[]
+  Incident         Incident[]
+  AiApiKey         AiApiKey[]
+  AiUsageLog       AiUsageLog[]
+  AiPromptTemplate AiPromptTemplate[]
+  AiConversation   AiConversation[]
+
+  // Indexes
+  @@index([email])
+  @@index([username])
+  @@index([status])
+  @@index([createdAt])
+  @@map("users")
+}
+
+model AuthProvider {
+  id            String           @id @default(cuid())
+  userId        String
+  provider      AuthProviderType
+  providerId    String           @db.VarChar(255)
+  providerEmail String?          @db.VarChar(255)
+  accessToken   String?          @db.Text
+  refreshToken  String?          @db.Text
+  expiresAt     DateTime?
+  metadata      Json?            @db.JsonB
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Constraints
+  @@unique([provider, providerId])
+  @@index([userId])
+  @@map("auth_providers")
+}
+
+model Token {
+  id        String    @id @default(cuid())
+  userId    String?
+  type      TokenType
+  token     String    @unique @db.VarChar(500)
+  expiresAt DateTime
+  usedAt    DateTime?
+  metadata  Json?     @db.JsonB
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([token])
+  @@index([userId, type])
+  @@index([expiresAt])
+  @@map("tokens")
+}
+
+model Session {
+  id     String @id @default(cuid())
+  userId String
+  token  String @unique @db.VarChar(500)
+
+  ipAddress String? @db.VarChar(45)
+  userAgent String? @db.Text
+  device    String? @db.VarChar(255)
+  location  String? @db.VarChar(255)
+
+  lastActivityAt DateTime @default(now())
+  expiresAt      DateTime
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// Multi-tenancy Models
+model Tenant {
+  id          String  @id @default(cuid())
+  name        String  @db.VarChar(255)
+  slug        String  @unique @db.VarChar(100)
+  logo        String? @db.Text
+  description String? @db.Text
+
+  ownerId String
+  status  TenantStatus @default(ACTIVE)
+
+  // Billing
+  stripeCustomerId String? @unique
+  subscriptionId   String? @unique
+
+  // Settings
+  settings Json? @db.JsonB
+  metadata Json? @db.JsonB
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  owner            User               @relation(fields: [ownerId], references: [id])
+  members          TenantMember[]
+  subscription     Subscription?      @relation(fields: [subscriptionId], references: [id])
+  projects         Project[]
+  invitations      TenantInvitation[]
+  tickets          Ticket[]
+  AiApiKey         AiApiKey[]
+  AiUsageLog       AiUsageLog[]
+  AiPromptTemplate AiPromptTemplate[]
+  AiConversation   AiConversation[]
+  EmailList        EmailList[]
+  EmailCampaign    EmailCampaign[]
+  EmailTemplate    EmailTemplate[]
+  EmailAutomation  EmailAutomation[]
+
+  // Indexes
+  @@index([slug])
+  @@index([ownerId])
+  @@index([status])
+  @@map("tenants")
+  EmailSegment EmailSegment[]
+}
+
+model TenantMember {
+  id       String           @id @default(cuid())
+  tenantId String
+  userId   String
+  role     TenantMemberRole @default(MEMBER)
+
+  joinedAt    DateTime @default(now())
+  invitedById String?
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Constraints
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("tenant_members")
+}
+
+model TenantInvitation {
+  id       String           @id @default(cuid())
+  tenantId String
+  email    String           @db.VarChar(255)
+  role     TenantMemberRole @default(MEMBER)
+  token    String           @unique
+
+  invitedById String
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([token])
+  @@index([email])
+  @@index([tenantId])
+  @@map("tenant_invitations")
+}
+
+// Billing Models
+model Subscription {
+  id               String             @id
+  userId           String
+  tenantId         String?            @unique
+  stripeCustomerId String
+  stripePriceId    String
+  stripeProductId  String
+  status           SubscriptionStatus
+
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean   @default(false)
+  canceledAt         DateTime?
+  trialEnd           DateTime?
+
+  metadata Json? @db.JsonB
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user         User          @relation(fields: [userId], references: [id])
+  tenant       Tenant?
+  invoices     Invoice[]
+  usageRecords UsageRecord[]
+
+  // Indexes
+  @@index([userId])
+  @@index([status])
+  @@index([stripeCustomerId])
+  @@map("subscriptions")
+}
+
+model Invoice {
+  id              String @id @default(cuid())
+  subscriptionId  String
+  stripeInvoiceId String @unique
+  customerId      String
+
+  amount   Int
+  currency String        @db.VarChar(3)
+  status   InvoiceStatus
+
+  periodStart DateTime
+  periodEnd   DateTime
+  paidAt      DateTime?
+
+  hostedInvoiceUrl String? @db.Text
+  invoicePdf       String? @db.Text
+
+  metadata Json? @db.JsonB
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+
+  // Indexes
+  @@index([subscriptionId])
+  @@index([status])
+  @@index([customerId])
+  @@map("invoices")
+}
+
+model UsageRecord {
+  id             String @id @default(cuid())
+  subscriptionId String
+
+  quantity  Int
+  timestamp DateTime
+  action    String   @db.VarChar(100)
+
+  metadata Json? @db.JsonB
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+
+  // Indexes
+  @@index([subscriptionId])
+  @@index([timestamp])
+  @@index([action])
+  @@map("usage_records")
+}
+
+// Feature Management
+model Plan {
+  id          String  @id @default(cuid())
+  name        String  @db.VarChar(100)
+  slug        String  @unique @db.VarChar(50)
+  description String? @db.Text
+
+  stripePriceId   String? @unique
+  stripeProductId String?
+
+  price    Int // in cents
+  currency String @default("usd") @db.VarChar(3)
+  interval String @default("month") @db.VarChar(20)
+
+  trialDays Int     @default(0)
+  active    Boolean @default(true)
+  popular   Boolean @default(false)
+
+  metadata Json? @db.JsonB
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  features PlanFeature[]
+
+  // Indexes
+  @@index([slug])
+  @@index([active])
+  @@map("plans")
+}
+
+model Feature {
+  id          String  @id @default(cuid())
+  name        String  @db.VarChar(100)
+  key         String  @unique @db.VarChar(50)
+  description String? @db.Text
+  category    String? @db.VarChar(50)
+
+  metadata Json? @db.JsonB
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  plans        PlanFeature[]
+  featureUsage FeatureUsage[]
+
+  // Indexes
+  @@index([key])
+  @@index([category])
+  @@map("features")
+}
+
+model PlanFeature {
+  id        String @id @default(cuid())
+  planId    String
+  featureId String
+
+  included   Boolean @default(true)
+  limitValue Int? // For numeric limits (e.g., max projects)
+
+  metadata Json? @db.JsonB
+
+  // Relations
+  plan    Plan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  feature Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  // Constraints
+  @@unique([planId, featureId])
+  @@index([planId])
+  @@index([featureId])
+  @@map("plan_features")
+}
+
+model FeatureUsage {
+  id        String  @id @default(cuid())
+  userId    String
+  featureId String
+  tenantId  String?
+
+  count      Int      @default(1)
+  lastUsedAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  feature Feature @relation(fields: [featureId], references: [id])
+
+  // Indexes
+  @@index([userId])
+  @@index([featureId])
+  @@index([tenantId])
+  @@index([lastUsedAt])
+  @@map("feature_usage")
+}
+
+// API Usage Tracking
+model ApiUsage {
+  id       String  @id @default(cuid())
+  userId   String
+  tenantId String?
+
+  endpoint     String @db.VarChar(255)
+  method       String @db.VarChar(10)
+  statusCode   Int
+  responseTime Int // in milliseconds
+
+  ipAddress String? @db.VarChar(45)
+  userAgent String? @db.Text
+
+  metadata Json? @db.JsonB
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+
+  // Indexes
+  @@index([userId])
+  @@index([tenantId])
+  @@index([endpoint])
+  @@index([createdAt])
+  @@map("api_usage")
+}
+
+// Project Model (Example business entity)
+model Project {
+  id       String  @id @default(cuid())
+  userId   String
+  tenantId String?
+
+  name        String  @db.VarChar(255)
+  description String? @db.Text
+  slug        String  @unique
+
+  settings Json? @db.JsonB
+  metadata Json? @db.JsonB
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  user   User    @relation(fields: [userId], references: [id])
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+
+  // Indexes
+  @@index([userId])
+  @@index([tenantId])
+  @@index([slug])
+  @@map("projects")
+}
+
+model Notification {
+  id     String           @id @default(cuid())
+  userId String
+  type   NotificationType
+
+  title   String @db.VarChar(255)
+  content String @db.Text
+
+  readAt DateTime?
+  sentAt DateTime?
+
+  metadata Json? @db.JsonB
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([userId, readAt])
+  @@index([type])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id     String  @id @default(cuid())
+  userId String?
+
+  action   String  @db.VarChar(100)
+  entity   String  @db.VarChar(100)
+  entityId String? @db.VarChar(255)
+
+  oldValues Json? @db.JsonB
+  newValues Json? @db.JsonB
+  metadata  Json? @db.JsonB
+
+  ipAddress String? @db.VarChar(45)
+  userAgent String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // Indexes
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model File {
+  id     String  @id @default(cuid())
+  userId String?
+
+  filename     String @db.VarChar(255)
+  originalName String @db.VarChar(255)
+  mimeType     String @db.VarChar(100)
+  size         Int
+
+  storage String  @db.VarChar(50)
+  path    String  @db.Text
+  url     String? @db.Text
+
+  metadata Json? @db.JsonB
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // Indexes
+  @@index([userId])
+  @@index([createdAt])
+  @@map("files")
+}
+
+model Job {
+  id String @id @default(cuid())
+
+  queue  String    @db.VarChar(100)
+  name   String    @db.VarChar(100)
+  status JobStatus @default(PENDING)
+
+  data   Json  @db.JsonB
+  result Json? @db.JsonB
+  error  Json? @db.JsonB
+
+  attempts    Int @default(0)
+  maxAttempts Int @default(3)
+
+  scheduledFor DateTime?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  failedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Indexes
+  @@index([queue, status])
+  @@index([scheduledFor])
+  @@index([createdAt])
+  @@map("jobs")
+}
+
+model Setting {
+  id          String  @id @default(cuid())
+  key         String  @unique @db.VarChar(255)
+  value       Json    @db.JsonB
+  description String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Indexes
+  @@index([key])
+  @@map("settings")
+}
+
+model AnalyticsEvent {
+  id       String  @id @default(cuid())
+  userId   String?
+  tenantId String?
+
+  event      String @db.VarChar(100)
+  properties Json?  @db.JsonB
+
+  sessionId String? @db.VarChar(100)
+  deviceId  String? @db.VarChar(100)
+
+  ipAddress String? @db.VarChar(45)
+  userAgent String? @db.Text
+  referrer  String? @db.Text
+
+  utmSource   String? @db.VarChar(100)
+  utmMedium   String? @db.VarChar(100)
+  utmCampaign String? @db.VarChar(100)
+  utmTerm     String? @db.VarChar(100)
+  utmContent  String? @db.VarChar(100)
+
+  timestamp DateTime @default(now())
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([event])
+  @@index([timestamp])
+  @@index([sessionId])
+  @@map("analytics_events")
+}
+
+// ========================= WEBHOOKS =========================
+
+model WebhookEndpoint {
+  id       String  @id @default(cuid())
+  userId   String
+  tenantId String?
+
+  url         String   @db.Text
+  events      String[]
+  description String?  @db.Text
+  secret      String   @db.VarChar(255)
+  enabled     Boolean  @default(true)
+  headers     Json?    @db.JsonB
+  metadata    Json?    @db.JsonB
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  deliveries WebhookDelivery[]
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([enabled])
+  @@map("webhook_endpoints")
+}
+
+model WebhookEvent {
+  id        String   @id @default(cuid())
+  eventType String   @db.VarChar(100)
+  payload   Json     @db.JsonB
+  createdAt DateTime @default(now())
+
+  deliveries WebhookDelivery[]
+
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("webhook_events")
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+model WebhookDelivery {
+  id                String @id @default(cuid())
+  webhookEndpointId String
+  eventId           String
+
+  eventType String @db.VarChar(100)
+  payload   Json   @db.JsonB
+
+  status     WebhookDeliveryStatus @default(PENDING)
+  statusCode Int?
+  error      String?               @db.Text
+  response   Json?                 @db.JsonB
+
+  attemptNumber Int  @default(1)
+  duration      Int? // in milliseconds
+
+  createdAt DateTime  @default(now())
+  retriedAt DateTime?
+
+  webhookEndpoint WebhookEndpoint @relation(fields: [webhookEndpointId], references: [id])
+  event           WebhookEvent?   @relation(fields: [eventId], references: [id])
+
+  @@index([webhookEndpointId])
+  @@index([eventId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("webhook_deliveries")
+}
+
+// ========================= USER ONBOARDING =========================
+
+enum OnboardingStatus {
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+}
+
+enum OnboardingStepStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+}
+
+model OnboardingFlow {
+  id             String @id @default(cuid())
+  userId         String
+  flowTemplateId String @db.VarChar(100)
+
+  status  OnboardingStatus @default(IN_PROGRESS)
+  context Json?            @db.JsonB
+
+  totalSteps     Int
+  completedSteps Int     @default(0)
+  allowSkip      Boolean @default(true)
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  skippedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  steps OnboardingStep[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("onboarding_flows")
+}
+
+model OnboardingStep {
+  id     String @id @default(cuid())
+  flowId String
+  stepId String @db.VarChar(100)
+
+  title       String  @db.VarChar(255)
+  description String? @db.Text
+  type        String  @db.VarChar(50)
+  order       Int
+  required    Boolean @default(false)
+
+  status         OnboardingStepStatus @default(PENDING)
+  content        Json?                @db.JsonB
+  action         Json?                @db.JsonB
+  completionData Json?                @db.JsonB
+  metadata       Json?                @db.JsonB
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  skippedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  flow OnboardingFlow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+
+  @@index([flowId])
+  @@index([status])
+  @@map("onboarding_steps")
+}
+
+model OnboardingProgress {
+  flowId                 String  @id
+  totalSteps             Int
+  completedSteps         Int
+  skippedSteps           Int
+  requiredSteps          Int
+  requiredCompleted      Int
+  percentComplete        Int
+  isComplete             Boolean
+  estimatedTimeRemaining Int // in minutes
+}
+
+// ========================= TICKET SYSTEM =========================
+
+// Support Ticket System Models
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_FOR_CUSTOMER
+  WAITING_FOR_SUPPORT
+  RESOLVED
+  CLOSED
+  CANCELLED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+  CRITICAL
+}
+
+enum TicketType {
+  GENERAL_INQUIRY
+  TECHNICAL_ISSUE
+  BUG_REPORT
+  FEATURE_REQUEST
+  BILLING_ISSUE
+  ACCOUNT_ISSUE
+  OTHER
+}
+
+model TicketCategory {
+  id          String  @id @default(cuid())
+  name        String  @db.VarChar(100)
+  slug        String  @unique @db.VarChar(100)
+  description String? @db.Text
+  icon        String? @db.VarChar(50)
+  parentId    String?
+  order       Int     @default(0)
+  active      Boolean @default(true)
+
+  metadata Json? @db.JsonB
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  parent   TicketCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children TicketCategory[] @relation("CategoryHierarchy")
+  tickets  Ticket[]
+
+  // Indexes
+  @@index([slug])
+  @@index([parentId])
+  @@map("ticket_categories")
+}
+
+model Ticket {
+  id         String  @id @default(cuid())
+  number     String  @unique @db.VarChar(20)
+  userId     String
+  tenantId   String?
+  categoryId String?
+  assigneeId String?
+
+  subject     String         @db.VarChar(255)
+  description String         @db.Text
+  type        TicketType     @default(GENERAL_INQUIRY)
+  status      TicketStatus   @default(OPEN)
+  priority    TicketPriority @default(MEDIUM)
+
+  // SLA tracking
+  firstResponseAt  DateTime?
+  firstResponseSla Int? // in minutes
+  resolutionAt     DateTime?
+  resolutionSla    Int? // in minutes
+  slaBreached      Boolean   @default(false)
+
+  // Satisfaction
+  satisfactionRating  Int? // 1-5
+  satisfactionComment String? @db.Text
+
+  // Additional info
+  tags        String[]
+  attachments String[] // file IDs
+  metadata    Json?    @db.JsonB
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  closedAt  DateTime?
+  deletedAt DateTime?
+
+  // Relations
+  user       User             @relation(fields: [userId], references: [id])
+  tenant     Tenant?          @relation(fields: [tenantId], references: [id])
+  category   TicketCategory?  @relation(fields: [categoryId], references: [id])
+  assignee   User?            @relation("AssignedTickets", fields: [assigneeId], references: [id])
+  messages   TicketMessage[]
+  activities TicketActivity[]
+  watchers   TicketWatcher[]
+
+  // Indexes
+  @@index([number])
+  @@index([userId])
+  @@index([tenantId])
+  @@index([assigneeId])
+  @@index([status])
+  @@index([priority])
+  @@index([createdAt])
+  @@map("tickets")
+}
+
+model TicketMessage {
+  id       String @id @default(cuid())
+  ticketId String
+  userId   String
+
+  content     String   @db.Text
+  attachments String[] // file IDs
+  internal    Boolean  @default(false) // Internal notes not visible to customer
+
+  metadata Json? @db.JsonB
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+
+  // Indexes
+  @@index([ticketId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("ticket_messages")
+}
+
+enum TicketActivityType {
+  CREATED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  ASSIGNED
+  UNASSIGNED
+  MESSAGE_ADDED
+  INTERNAL_NOTE_ADDED
+  ATTACHMENT_ADDED
+  CATEGORY_CHANGED
+  TAGS_UPDATED
+  MERGED
+  ESCALATED
+  RESOLVED
+  CLOSED
+  REOPENED
+}
+
+model TicketActivity {
+  id       String             @id @default(cuid())
+  ticketId String
+  userId   String?
+  type     TicketActivityType
+
+  description String? @db.Text
+  oldValue    String? @db.VarChar(255)
+  newValue    String? @db.VarChar(255)
+  metadata    Json?   @db.JsonB
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id])
+
+  // Indexes
+  @@index([ticketId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("ticket_activities")
+}
+
+model TicketWatcher {
+  id       String @id @default(cuid())
+  ticketId String
+  userId   String
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Constraints
+  @@unique([ticketId, userId])
+  @@index([ticketId])
+  @@index([userId])
+  @@map("ticket_watchers")
+}
+
+model TicketTemplate {
+  id          String  @id @default(cuid())
+  name        String  @db.VarChar(100)
+  description String? @db.Text
+
+  subject  String   @db.VarChar(255)
+  content  String   @db.Text
+  category String?  @db.VarChar(50)
+  tags     String[]
+
+  active Boolean @default(true)
+
+  metadata Json? @db.JsonB
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Indexes
+  @@index([name])
+  @@index([category])
+  @@map("ticket_templates")
+}
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentStatus {
+  OPEN
+  INVESTIGATING
+  IDENTIFIED
+  MONITORING
+  RESOLVED
+  CLOSED
+}
+
+model Incident {
+  id          String           @id @default(cuid())
+  title       String           @db.VarChar(255)
+  description String           @db.Text
+  severity    IncidentSeverity
+  status      IncidentStatus
+
+  affectedServices String[]
+  impactedUsers    Int?
+
+  resolution   String?   @db.Text
+  resolvedAt   DateTime?
+  resolvedById String?
+
+  metadata Json? @db.JsonB
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  resolvedBy User?            @relation(fields: [resolvedById], references: [id])
+  updates    IncidentUpdate[]
+  userId     String?
+  User       User[]           @relation("ResolvedIncidents")
+
+  @@index([status])
+  @@index([severity])
+  @@index([createdAt])
+  @@map("incidents")
+}
+
+model IncidentUpdate {
+  id         String @id @default(cuid())
+  incidentId String
+  userId     String
+
+  message String          @db.Text
+  status  IncidentStatus?
+
+  createdAt DateTime @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@index([incidentId])
+  @@map("incident_updates")
+}
+
+// ========================= AI MODULE =========================
+
+model AiProvider {
+  id          String   @id @default(cuid())
+  name        String   @unique // openai, anthropic, google, ollama
+  displayName String
+  enabled     Boolean  @default(true)
+  apiEndpoint String?
+  settings    Json?    @db.JsonB // Provider-specific settings
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  apiKeys   AiApiKey[]
+  usageLogs AiUsageLog[]
+
+  @@map("ai_providers")
+}
+
+model AiApiKey {
+  id         String     @id @default(cuid())
+  providerId String
+  provider   AiProvider @relation(fields: [providerId], references: [id])
+
+  userId   String?
+  user     User?   @relation(fields: [userId], references: [id])
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+
+  name       String
+  keyHash    String // Encrypted API key
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+
+  usageLimit   Int? // Monthly usage limit
+  currentUsage Int  @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, tenantId])
+  @@index([providerId])
+  @@map("ai_api_keys")
+}
+
+model AiUsageLog {
+  id String @id @default(cuid())
+
+  providerId String
+  provider   AiProvider @relation(fields: [providerId], references: [id])
+
+  userId   String
+  user     User    @relation(fields: [userId], references: [id])
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+
+  model     String // gpt-4, claude-3, etc
+  operation String // completion, chat, embedding, image
+
+  // Request details
+  promptTokens     Int
+  completionTokens Int
+  totalTokens      Int
+
+  // Cost tracking
+  cost     Float // In cents
+  currency String @default("USD")
+
+  // Performance
+  latency Int // in milliseconds
+  cached  Boolean @default(false)
+
+  // Metadata
+  metadata Json?   @db.JsonB
+  error    String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([tenantId, createdAt])
+  @@index([providerId, model])
+  @@map("ai_usage_logs")
+}
+
+model AiPromptTemplate {
+  id String @id @default(cuid())
+
+  name        String  @db.VarChar(255)
+  description String? @db.Text
+  category    String? @db.VarChar(100)
+
+  prompt    String @db.Text
+  variables Json?  @db.JsonB // Expected variables
+
+  userId   String?
+  user     User?   @relation(fields: [userId], references: [id])
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+
+  isPublic   Boolean @default(false)
+  usageCount Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, tenantId])
+  @@index([category])
+  @@index([isPublic])
+  @@map("ai_prompt_templates")
+}
+
+model AiConversation {
+  id String @id @default(cuid())
+
+  userId   String
+  user     User    @relation(fields: [userId], references: [id])
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id])
+
+  title    String? @db.VarChar(255)
+  model    String  @db.VarChar(100)
+  provider String  @db.VarChar(50)
+
+  messages Json  @db.JsonB // Array of messages
+  metadata Json? @db.JsonB
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([tenantId])
+  @@map("ai_conversations")
+}
+
+// ========================= EMAIL MARKETING =========================
+
+enum EmailListStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+  DELETED
+}
+
+enum EmailCampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  PAUSED
+  CANCELLED
+  FAILED
+}
+
+enum EmailCampaignType {
+  REGULAR
+  AUTOMATED
+  DRIP
+  TRANSACTIONAL
+  AB_TEST
+}
+
+enum EmailSegmentOperator {
+  EQUALS
+  NOT_EQUALS
+  CONTAINS
+  NOT_CONTAINS
+  GREATER_THAN
+  LESS_THAN
+  IN
+  NOT_IN
+}
+
+enum EmailAutomationTrigger {
+  USER_SIGNUP
+  LIST_SUBSCRIBE
+  TAG_ADDED
+  DATE_BASED
+  CUSTOM_EVENT
+  WEBHOOK
+}
+
+enum EmailDeliveryStatus {
+  PENDING
+  SENT
+  DELIVERED
+  BOUNCED
+  OPENED
+  CLICKED
+  UNSUBSCRIBED
+  COMPLAINED
+  FAILED
+}
+
+enum EmailAutomationStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum EmailAutomationDelayUnit {
+  MINUTES
+  HOURS
+  DAYS
+}
+
+enum EmailAutomationAction {
+  SEND_EMAIL
+  WAIT
+  CONDITION
+  TAG
+  UNTAG
+  WEBHOOK
+}
+
+enum EmailEngagementLevel {
+  HIGH
+  MEDIUM
+  LOW
+  NONE
+}
+
+enum EmailVariableType {
+  TEXT
+  NUMBER
+  DATE
+  BOOLEAN
+  LIST
+}
+
+enum EmailActivityType {
+  SENT
+  DELIVERED
+  OPENED
+  CLICKED
+  UNSUBSCRIBED
+  COMPLAINED
+  BOUNCED
+  FAILED
+}
+
+model EmailList {
+  id          String          @id @default(cuid())
+  tenantId    String
+  name        String          @db.VarChar(255)
+  description String?         @db.Text
+  status      EmailListStatus @default(ACTIVE)
+
+  // List settings
+  doubleOptIn         Boolean @default(true)
+  welcomeEmailId      String?
+  confirmationPageUrl String? @db.Text
+
+  // Default sender info
+  defaultFromName  String? @db.VarChar(255)
+  defaultFromEmail String? @db.VarChar(255)
+  defaultReplyTo   String? @db.VarChar(255)
+
+  // Custom fields schema
+  customFields Json? @db.JsonB
+
+  metadata Json? @db.JsonB
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  tenant      Tenant                @relation(fields: [tenantId], references: [id])
+  subscribers EmailListSubscriber[]
+  campaigns   EmailCampaign[]
+  segments    EmailSegment[]
+  automations EmailAutomation[]
+
+  // Indexes
+  @@index([tenantId])
+  @@index([status])
+  @@map("email_lists")
+}
+
+model EmailListSubscriber {
+  id     String @id @default(cuid())
+  listId String
+  email  String @db.VarChar(255)
+
+  // Subscriber info
+  firstName String? @db.VarChar(100)
+  lastName  String? @db.VarChar(100)
+
+  // Status
+  subscribed        Boolean   @default(true)
+  confirmed         Boolean   @default(false)
+  confirmationToken String?   @unique
+  confirmedAt       DateTime?
+
+  // Tracking
+  source    String? @db.VarChar(100)
+  ipAddress String? @db.VarChar(45)
+  location  String? @db.VarChar(255)
+
+  // Custom fields
+  customData Json?    @db.JsonB
+  tags       String[]
+
+  // Engagement metrics
+  lastEngagedAt    DateTime?
+  engagementScore  Float              @default(0)
+  engagementLevel  EmailEngagementLevel @default(MEDIUM)
+
+  metadata Json? @db.JsonB
+
+  subscribedAt   DateTime  @default(now())
+  unsubscribedAt DateTime?
+  updatedAt      DateTime  @updatedAt
+
+  // Relations
+  list       EmailList                @relation(fields: [listId], references: [id], onDelete: Cascade)
+  recipients EmailCampaignRecipient[]
+  activities EmailActivity[]
+
+  // Constraints
+  @@unique([listId, email])
+  @@index([email])
+  @@index([confirmed])
+  @@index([subscribedAt])
+  @@index([engagementLevel])
+  @@map("email_list_subscribers")
+  EmailAutomationEnrollment EmailAutomationEnrollment[]
+}
+
+model EmailCampaign {
+  id       String  @id @default(cuid())
+  tenantId String
+  listId   String?
+
+  name      String  @db.VarChar(255)
+  subject   String  @db.VarChar(500)
+  preheader String? @db.VarChar(255)
+
+  fromName  String  @db.VarChar(255)
+  fromEmail String  @db.VarChar(255)
+  replyTo   String? @db.VarChar(255)
+
+  type   EmailCampaignType   @default(REGULAR)
+  status EmailCampaignStatus @default(DRAFT)
+
+  // Content
+  templateId  String?
+  htmlContent String  @db.Text
+  textContent String? @db.Text
+
+  // Targeting
+  segmentIds        String[]
+  excludeSegmentIds String[]
+
+  // Schedule
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  completedAt DateTime?
+
+  // A/B Testing
+  isABTest         Boolean @default(false)
+  abTestConfig     Json?   @db.JsonB
+  winningVariantId String?
+
+  // Settings
+  trackOpens      Boolean @default(true)
+  trackClicks     Boolean @default(true)
+  googleAnalytics Boolean @default(false)
+  utmParams       Json?   @db.JsonB
+
+  metadata Json? @db.JsonB
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  tenant         Tenant                   @relation(fields: [tenantId], references: [id])
+  list           EmailList?               @relation(fields: [listId], references: [id])
+  template       EmailTemplate?           @relation(fields: [templateId], references: [id])
+  recipients     EmailCampaignRecipient[]
+  messages       EmailCampaignMessage[]
+  stats          EmailCampaignStats?
+  activities     EmailActivity[]
+  abTestVariants EmailABTestVariant[]
+
+  // Indexes
+  @@index([tenantId])
+  @@index([listId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@map("email_campaigns")
+}
+
+model EmailCampaignMessage {
+  id         String  @id @default(cuid())
+  campaignId String
+  variantId  String?
+
+  subject     String  @db.VarChar(500)
+  preheader   String? @db.VarChar(255)
+  htmlContent String  @db.Text
+  textContent String? @db.Text
+
+  // A/B test weight (percentage)
+  weight Int @default(100)
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  campaign EmailCampaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  variant  EmailABTestVariant? @relation(fields: [variantId], references: [id])
+
+  @@index([campaignId])
+  @@map("email_campaign_messages")
+}
+
+model EmailCampaignRecipient {
+  id           String @id @default(cuid())
+  campaignId   String
+  subscriberId String
+
+  status EmailDeliveryStatus @default(PENDING)
+
+  sentAt         DateTime?
+  deliveredAt    DateTime?
+  openedAt       DateTime?
+  clickedAt      DateTime?
+  bouncedAt      DateTime?
+  unsubscribedAt DateTime?
+  complainedAt   DateTime?
+
+  openCount  Int @default(0)
+  clickCount Int @default(0)
+
+  error    String? @db.Text
+  metadata Json?   @db.JsonB
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  campaign   EmailCampaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  subscriber EmailListSubscriber @relation(fields: [subscriberId], references: [id])
+
+  // Constraints
+  @@unique([campaignId, subscriberId])
+  @@index([status])
+  @@index([sentAt])
+  @@map("email_campaign_recipients")
+}
+
+model EmailCampaignStats {
+  id         String @id
+  campaignId String @unique
+
+  // Send stats
+  totalRecipients Int @default(0)
+  sentCount       Int @default(0)
+  deliveredCount  Int @default(0)
+  bouncedCount    Int @default(0)
+
+  // Engagement stats
+  openCount        Int @default(0)
+  uniqueOpenCount  Int @default(0)
+  clickCount       Int @default(0)
+  uniqueClickCount Int @default(0)
+
+  // Negative stats
+  unsubscribeCount Int @default(0)
+  complaintCount   Int @default(0)
+
+  // Rates (percentages)
+  deliveryRate    Float @default(0)
+  openRate        Float @default(0)
+  clickRate       Float @default(0)
+  clickToOpenRate Float @default(0)
+  unsubscribeRate Float @default(0)
+  complaintRate   Float @default(0)
+
+  // Revenue tracking
+  revenue        Float @default(0)
+  orderCount     Int   @default(0)
+  conversionRate Float @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  campaign EmailCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@map("email_campaign_stats")
+}
+
+model EmailTemplate {
+  id       String @id @default(cuid())
+  tenantId String
+
+  name        String  @db.VarChar(255)
+  description String? @db.Text
+  category    String? @db.VarChar(100)
+
+  subject     String  @db.VarChar(500)
+  preheader   String? @db.VarChar(255)
+  htmlContent String  @db.Text
+  textContent String? @db.Text
+
+  // Template variables
+  variables Json? @db.JsonB // Array of {name, type, defaultValue, required}
+
+  // Sample variable type to ensure EmailVariableType is included in Prisma Client
+  defaultVariableType EmailVariableType @default(TEXT)
+
+  // Thumbnail
+  thumbnail String? @db.Text
+
+  isPublic   Boolean @default(false)
+  isArchived Boolean @default(false)
+
+  metadata Json? @db.JsonB
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  tenant          Tenant                @relation(fields: [tenantId], references: [id])
+  campaigns       EmailCampaign[]
+  automationSteps EmailAutomationStep[]
+
+  // Indexes
+  @@index([tenantId])
+  @@index([category])
+  @@index([isPublic])
+  @@index([isArchived])
+  @@map("email_templates")
+}
+
+model EmailSegment {
+  id       String @id @default(cuid())
+  listId   String
+  tenantId String
+
+  name        String  @db.VarChar(255)
+  description String? @db.Text
+
+  // Dynamic conditions
+  conditions Json @db.JsonB // Contains operator (AND/OR) and condition groups
+
+  // Example of a condition that uses EmailSegmentOperator
+  // This is a sample field to ensure EmailSegmentOperator is included in the Prisma Client
+  defaultOperator EmailSegmentOperator @default(EQUALS)
+
+  // Cached count
+  subscriberCount  Int       @default(0)
+  lastCalculatedAt DateTime?
+
+  metadata Json? @db.JsonB
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  list   EmailList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  tenant Tenant    @relation(fields: [tenantId], references: [id])
+
+  // Indexes
+  @@index([listId])
+  @@index([tenantId])
+  @@map("email_segments")
+}
+
+model EmailAutomation {
+  id       String  @id @default(cuid())
+  tenantId String
+  listId   String?
+
+  name        String  @db.VarChar(255)
+  description String? @db.Text
+
+  trigger       EmailAutomationTrigger
+  triggerConfig Json                   @db.JsonB
+
+  active Boolean @default(false)
+
+  // Stats
+  totalEnrolled  Int @default(0)
+  totalCompleted Int @default(0)
+
+  metadata Json? @db.JsonB
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  tenant      Tenant                      @relation(fields: [tenantId], references: [id])
+  list        EmailList?                  @relation(fields: [listId], references: [id])
+  steps       EmailAutomationStep[]
+  enrollments EmailAutomationEnrollment[]
+
+  // Indexes
+  @@index([tenantId])
+  @@index([listId])
+  @@index([active])
+  @@map("email_automations")
+}
+
+model EmailAutomationStep {
+  id           String @id @default(cuid())
+  automationId String
+
+  name  String @db.VarChar(255)
+  order Int
+
+  // Timing
+  delayAmount Int                     @default(0)
+  delayUnit   EmailAutomationDelayUnit @default(HOURS)
+
+  // Content
+  templateId  String?
+  subject     String  @db.VarChar(500)
+  htmlContent String  @db.Text
+  textContent String? @db.Text
+
+  // Action
+  action       EmailAutomationAction @default(SEND_EMAIL)
+  actionConfig Json?                 @db.JsonB
+
+  // Conditions
+  conditions Json? @db.JsonB
+
+  // Stats
+  delivered Int @default(0)
+  opened    Int @default(0)
+  clicked   Int @default(0)
+
+  metadata Json? @db.JsonB
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  automation EmailAutomation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  template   EmailTemplate?  @relation(fields: [templateId], references: [id])
+  stepRuns   EmailAutomationStepRun[]
+
+  // Indexes
+  @@index([automationId])
+  @@index([order])
+  @@map("email_automation_steps")
+}
+
+model EmailAutomationStepRun {
+  id           String @id @default(cuid())
+  stepId       String
+  enrollmentId String
+
+  executedAt DateTime @default(now())
+  status     EmailDeliveryStatus @default(PENDING)
+
+  // Stats
+  delivered Boolean @default(false)
+  opened    Boolean @default(false)
+  clicked   Boolean @default(false)
+
+  metadata Json? @db.JsonB
+
+  // Relations
+  step EmailAutomationStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([stepId])
+  @@index([enrollmentId])
+  @@index([executedAt])
+  @@map("email_automation_step_runs")
+}
+
+model EmailAutomationEnrollment {
+  id           String @id @default(cuid())
+  automationId String
+  subscriberId String
+
+  status        EmailAutomationStatus @default(ACTIVE)
+  currentStepId String?
+
+  enrolledAt  DateTime  @default(now())
+  completedAt DateTime?
+  cancelledAt DateTime?
+
+  metadata Json? @db.JsonB
+
+  // Relations
+  automation EmailAutomation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  subscriber EmailListSubscriber @relation(fields: [subscriberId], references: [id])
+
+  // Constraints
+  @@unique([automationId, subscriberId])
+  @@index([status])
+  @@map("email_automation_enrollments")
+}
+
+model EmailActivity {
+  id           String  @id @default(cuid())
+  campaignId   String?
+  subscriberId String
+
+  type EmailActivityType
+
+  // Click tracking
+  clickedUrl String? @db.Text
+
+  // Device/Client info
+  userAgent String? @db.Text
+  ipAddress String? @db.VarChar(45)
+  location  String? @db.VarChar(255)
+  device    String? @db.VarChar(100)
+  os        String? @db.VarChar(100)
+  browser   String? @db.VarChar(100)
+
+  metadata Json? @db.JsonB
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  campaign   EmailCampaign?      @relation(fields: [campaignId], references: [id])
+  subscriber EmailListSubscriber @relation(fields: [subscriberId], references: [id])
+
+  // Indexes
+  @@index([campaignId])
+  @@index([subscriberId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("email_activities")
+}
+
+model EmailUnsubscribe {
+  id       String  @id @default(cuid())
+  tenantId String
+  email    String  @db.VarChar(255)
+  listId   String?
+
+  reason   String? @db.Text
+  feedback String? @db.Text
+
+  // Global unsubscribe
+  globalUnsubscribe Boolean @default(false)
+
+  metadata Json? @db.JsonB
+
+  createdAt DateTime @default(now())
+
+  // Indexes
+  @@unique([tenantId, email, listId])
+  @@index([tenantId])
+  @@index([email])
+  @@index([globalUnsubscribe])
+  @@map("email_unsubscribes")
+}
+
+model EmailABTestVariant {
+  id         String @id @default(cuid())
+  campaignId String
+
+  name   String @db.VarChar(100)
+  weight Int    @default(50) // Percentage
+
+  // Variable content
+  subject  String? @db.VarChar(500)
+  fromName String? @db.VarChar(255)
+
+  // Stats
+  sentCount      Int   @default(0)
+  openRate       Float @default(0)
+  clickRate      Float @default(0)
+  conversionRate Float @default(0)
+
+  isWinner Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  campaign EmailCampaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  messages EmailCampaignMessage[]
+
+  @@index([campaignId])
+  @@map("email_ab_test_variants")
+}
