@@ -58,38 +58,66 @@ Triển khai hệ thống YouTube Shadowing Backend dựa trên template SaaS c�
 - [x] Add caching for video metadata
 - [x] Implement quota management
 
-### 2. Transcript Module - IN PROGRESS 🔧
-- [ ] Generate module using `pnpm module:generate`
-- [ ] Implement TranscriptService
-  - [ ] getTranscript(videoId) - with caching
-  - [ ] processYouTubeTranscript() - parse YouTube captions
-  - [ ] segmentTranscript() - break into sentences with timestamps
-  - [ ] searchTranscripts() - find practice content
-- [ ] Create DTOs
-  - [ ] GetTranscriptDTO
-  - [ ] ProcessTranscriptDTO
-  - [ ] SearchTranscriptDTO
-- [ ] Implement API endpoints
-  - [ ] GET /api/transcript/:videoId
-  - [ ] POST /api/transcript/:videoId/process
-  - [ ] GET /api/transcript/search
-- [ ] Add caching layer for transcripts
-- [ ] Implement rate limiting for API calls
+### 2. Transcript Module - COMPLETED ✅
+- [x] Generate module using `pnpm module:generate`
+- [x] Implement TranscriptService
+  - [x] getTranscript(videoId) - with caching
+  - [x] processYouTubeTranscript() - parse YouTube captions
+  - [x] segmentTranscript() - break into sentences with timestamps
+  - [x] searchTranscripts() - find practice content
+- [x] Create DTOs
+  - [x] GetTranscriptDTO
+  - [x] ProcessTranscriptDTO
+  - [x] SearchTranscriptDTO
+- [x] Implement API endpoints
+  - [x] GET /api/transcript/:videoId
+  - [x] POST /api/transcript/:videoId/process
+  - [x] GET /api/transcript/search
+- [x] Add caching layer for transcripts
+- [x] Implement rate limiting for API calls
 
-### 3. Practice Session Module
-- [ ] Generate module using `pnpm module:generate`
-- [ ] Implement PracticeSessionService
-- [ ] Create DTOs
-- [ ] Implement API endpoints
-- [ ] Add real-time state synchronization
-- [ ] Implement session expiration logic
+### 3. Practice Session Module - COMPLETED ✅
+- [x] Generate module using `pnpm module:generate`
+- [x] Implement PracticeSessionService
+  - [x] createSession() - Initialize new practice session
+  - [x] saveState() - Persist session state
+  - [x] resumeSession() - Continue from saved state
+  - [x] getSessionHistory() - User's practice history
+  - [x] updateSettings() - Change playback settings
+- [x] Create DTOs
+  - [x] CreateSessionDTO
+  - [x] SaveStateDTO
+  - [x] SessionHistoryQueryDTO
+  - [x] SessionSettingsDTO
+- [x] Implement API endpoints
+  - [x] POST /api/practice-session/create
+  - [x] PUT /api/practice-session/:sessionId/state
+  - [x] GET /api/practice-session/:sessionId/resume
+  - [x] GET /api/practice-session/history
+  - [x] PATCH /api/practice-session/:sessionId/settings
+- [x] Add real-time state synchronization
+- [x] Implement session expiration logic
 
-### 4. Audio Processing Module
+### 4. Audio Processing Module - IN PROGRESS 🔧
 - [ ] Generate module using `pnpm module:generate`
 - [ ] Install dependencies: fluent-ffmpeg, wavesurfer.js
 - [ ] Implement AudioProcessingService
+  - [ ] uploadRecording() - Handle audio uploads
+  - [ ] processAudio() - Waveform generation, format conversion
+  - [ ] compareAudio() - Compare with original
+  - [ ] generateScore() - Quality scoring
+  - [ ] deleteRecording() - Cleanup old recordings
 - [ ] Create DTOs
+  - [ ] UploadRecordingDTO
+  - [ ] ProcessAudioDTO
+  - [ ] AudioAnalysisDTO
+  - [ ] WaveformDataDTO
 - [ ] Implement API endpoints
+  - [ ] POST /api/audio/upload
+  - [ ] GET /api/audio/:recordingId
+  - [ ] POST /api/audio/:recordingId/process
+  - [ ] DELETE /api/audio/:recordingId
+  - [ ] GET /api/audio/:recordingId/waveform
 - [ ] Setup background jobs for audio processing
 - [ ] Implement file size and format validation
 
@@ -104,27 +132,6 @@ Triển khai hệ thống YouTube Shadowing Backend dựa trên template SaaS c�
 ## 💼 Phase 3: Integration & Enhancement (Weeks 4-5)
 
 ### Subscription & Billing Integration
-- [ ] Update subscription plans with shadowing features
-- [ ] Implement usage tracking
-- [ ] Create billing webhooks for plan changes
-
-### Security & Performance
-- [ ] Implement audio file validation
-- [ ] Add virus scanning for uploads
-- [ ] Setup CDN for audio delivery
-- [ ] Implement request throttling
-- [ ] Add comprehensive error handling
-
-### Testing & Documentation
-- [ ] Write unit tests for all services
-- [ ] Create integration tests for APIs
-- [ ] Document API endpoints with OpenAPI
-- [ ] Create user guide documentation
-- [ ] Setup monitoring and alerting
-
-## 🚀 Phase 4: System Integration (Week 4)
-
-### Billing Integration
 - [ ] Update subscription plans with shadowing features
 - [ ] Implement usage tracking for daily minutes
 - [ ] Create upgrade prompts when limits reached
@@ -147,6 +154,27 @@ Triển khai hệ thống YouTube Shadowing Backend dựa trên template SaaS c�
 - [ ] Setup Notification triggers for milestones
 - [ ] Add Support ticket categories
 - [ ] Configure Webhook events
+
+## 🚀 Phase 4: System Integration (Week 4)
+
+### Billing Integration
+- [ ] Update subscription plans with shadowing features
+- [ ] Implement usage tracking
+- [ ] Create billing webhooks for plan changes
+
+### Security & Performance
+- [ ] Implement audio file validation
+- [ ] Add virus scanning for uploads
+- [ ] Setup CDN for audio delivery
+- [ ] Implement request throttling
+- [ ] Add comprehensive error handling
+
+### Testing & Documentation
+- [ ] Write unit tests for all services
+- [ ] Create integration tests for APIs
+- [ ] Document API endpoints with OpenAPI
+- [ ] Create user guide documentation
+- [ ] Setup monitoring and alerting
 
 ## 🚀 Phase 5: Advanced Features (Weeks 5-6)
 
@@ -188,5 +216,5 @@ Triển khai hệ thống YouTube Shadowing Backend dựa trên template SaaS c�
 - Leverage existing auth, user, and billing modules
 - Implement smart caching to reduce API calls
 
-## 🚧 Current Status: Phase 1 - Database Schema
-Last Updated: 2025-06-18
+## 🚧 Current Status: Phase 2 - Audio Processing Module Implementation
+Last Updated: 2025-06-19
