@@ -1,4 +1,4 @@
-// CREATED: 2025-06-20 - API endpoints for learning progress tracking
+// API endpoints for learning progress tracking
 
 import { Service } from 'typedi';
 import { FastifyRequest, FastifyReply } from 'fastify';

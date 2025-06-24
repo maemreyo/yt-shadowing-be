@@ -1,4 +1,4 @@
-// CREATED: 2025-06-20 - Module exports for Learning Progress
+// Module exports for Learning Progress
 
 import { Container } from 'typedi';
 import { LearningProgressService } from './learning-progress.service';

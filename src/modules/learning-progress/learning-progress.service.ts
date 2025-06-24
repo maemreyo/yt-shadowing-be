@@ -1,4 +1,4 @@
-// CREATED: 2025-06-20 - Core service for tracking and analyzing learning progress
+// Core service for tracking and analyzing learning progress
 
 import { Service } from 'typedi';
 import { PrismaService } from '@shared/services/prisma.service';

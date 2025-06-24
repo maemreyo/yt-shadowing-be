@@ -1,4 +1,4 @@
-// CREATED: 2025-06-20 - Comprehensive DTOs for Learning Progress tracking
+// Comprehensive DTOs for Learning Progress tracking
 
 import { z } from 'zod';
 

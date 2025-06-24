@@ -1,4 +1,4 @@
-// CREATED: 2025-06-20 - Route definitions for learning progress endpoints
+// Route definitions for learning progress endpoints
 
 import { FastifyInstance } from 'fastify';
 import { Container } from 'typedi';

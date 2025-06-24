@@ -1,4 +1,4 @@
-// CREATED: 2025-06-20 - Event definitions and handlers for learning progress
+// Event definitions and handlers for learning progress
 
 import { Service } from 'typedi';
 import { EventEmitter } from '@shared/events/event-emitter';
